@@ -77,3 +77,6 @@ Erros históricos permanecem como registro; uma nova medição bem-sucedida não
 
 Logo e favicon: [`static/logo.svg`](static/logo.svg). Banner: [`static/banner.svg`](static/banner.svg).
 Os arquivos vetoriais compartilham a paleta escura, verde menta e azul da interface.
+
+Para rodar os testes de relatórios, instale também as dependências de desenvolvimento: `pip install -r requirements-dev.txt`.
+
