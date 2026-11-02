@@ -1,4 +1,4 @@
-![SpeedPanel — sua conexão, em perspectiva](static/banner.svg)
+![SpeedPanel — sua conexão, em perspectiva](static/banner.png)
 
 # SpeedPanel
 
