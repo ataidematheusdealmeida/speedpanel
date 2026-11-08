@@ -2,6 +2,83 @@
 
 # SpeedPanel
 
+## Relatórios selecionáveis e filtro de falhas
+
+Na visão geral, **Ocultar testes com falha** filtra somente status de erro; testes
+concluídos com alertas de regra continuam aparecendo. A preferência fica salva no navegador
+e também se aplica às análises e ao CSV. Nenhum registro é apagado.
+
+**Relatório PDF** e **Exportar Excel** abrem uma caixa para escolher Velocidade,
+Uptime e/ou Análises. É obrigatório escolher ao menos uma seção. A opção de ocultar
+falhas no documento pode ser ajustada independentemente da tela. Ela afeta as medições
+de velocidade e suas análises; incidentes de uptime continuam incluídos.
+
+Todas as seções usam o mesmo período selecionado. O serviço de medição filtra velocidade
+e análises; uptime inclui todos os monitores, inclusive arquivados com histórico. O PDF
+contém capa com filtros, definições, gráficos, mapa por horário e tabelas completas das
+seções escolhidas. O Excel acrescenta abas de escopo/metodologia e tabelas tipadas por tema.
+Respostas de uptime são agregadas por hora, com média, máximo e contagem de lentidão;
+incidentes e lacunas são listados individualmente, sem corte de 10.000 registros.
+O histórico anterior ao cadastro/à retenção aparece como sem dados. Configurações e metas
+são as vigentes no momento da geração, sem prometer reproduzir configurações antigas.
+
+API: `GET /api/report.pdf?sections=speed,uptime,analysis&hide_failed=1` (ou `.xlsx`),
+com os mesmos filtros `from`, `to` e `provider` da visão geral. Por compatibilidade,
+a ausência de `sections` mantém a exportação somente de velocidade.
+`python test_report_sections.py` verifica as sete combinações, filtros, datas, incidentes,
+segurança de fórmulas e tipos numéricos/datas. O teste de navegador verifica a seleção,
+download dos dois formatos, filtro persistente e layout em celular.
+
+## Uptime e análises
+
+As abas **Uptime** e **Análises** complementam os testes de velocidade.
+
+Em Uptime, cadastre HTTP/HTTPS (código esperado, redirecionamentos e certificado TLS validado),
+TCP (abertura de porta) ou ping ICMP. Configure intervalo de 10 a 86.400 segundos,
+tempo limite de 1 a 30 segundos (menor que o intervalo), 1 a 10 falhas consecutivas
+para confirmar queda e limite de resposta lenta. Até 100 monitores e 8 verificações
+simultâneas; os probes têm prazo total e são independentes da fila de velocidade.
+Ping usa iputils-ping na imagem. Destinos que bloqueiam ICMP devem usar HTTP ou TCP.
+
+O teste manual é diagnóstico e não altera o histórico. Pausar, retomar e manutenção
+até uma data estão disponíveis. O botão Manutenção 1h inicia uma janela imediatamente;
+a configuração permite agendar início e término futuros. Arquivar preserva os dados e encerra a coleta.
+Alterações de configuração interrompem a continuidade anterior e iniciam uma nova observação.
+
+A disponibilidade é calculada por duração observada, não por quantidade de respostas.
+Após o limite de falhas, as falhas consecutivas pendentes passam a contar como queda
+desde a primeira. Períodos pendentes, sem coleta, pausados ou em manutenção são excluídos
+do denominador; a cobertura informa a fração efetivamente observada do período completo.
+Uma amostra expira após 1,5 intervalo + timeout, evitando prolongar o último estado por
+um desligamento. Há tolerância de amostragem, não precisão de segundos entre verificações.
+Dados anteriores ao cadastro/à retenção também aparecem sem cobertura.
+
+Incidentes e durações são recortados pelo filtro de 24h, 7 ou 30 dias. Somente uma
+resposta disponível observada após a queda confirma recuperação e entra no tempo médio
+de recuperação. Uma lacuna ou manutenção encerra a observação sem presumir recuperação.
+O gráfico e a tabela de resposta agrupam médias, máximos e respostas lentas por hora.
+As marcações da linha do tempo priorizam qualquer queda dentro de cada bloco.
+
+Em Análises, os filtros de serviço e período são os mesmos da visão geral. Configure
+download/upload contratados e percentual mínimo esperado; zero desativa a comparação.
+As metas são comuns à conexão e recalculam a comparação histórica, sem alterar resultados
+ou regras dos serviços. O percentual abaixo da meta refere-se a medições, não a tempo
+contínuo de lentidão. Mediana, P95 interpolado, mínimos e máximos excluem falhas e dados
+ausentes. O mapa agrupa por dia da semana/hora no fuso configurado. A correlação compara
+o estado de cada monitor no início real dos novos testes. Resultados antigos sem esse
+campo usam a entrada na fila e são indicados como horários aproximados; associação não implica causalidade.
+Os agregados incluem todo o intervalo, sem o limite de 10.000 registros da tabela principal.
+
+A retenção geral vale também para uptime. O monitoramento depende deste servidor:
+para detectar indisponibilidade do próprio servidor, use uma sonda em outro equipamento
+ou local. Não há envio de alertas externos nesta versão.
+
+`python test_monitoring.py` verifica autenticação, CSRF, validação, falhas consecutivas,
+lacunas, cálculos por duração, manutenção, arquivamento, percentis, metas, filtros,
+correlação, agregados acima de 10.000 registros e probes reais HTTP/TCP locais.
+`python test_ui.py` executa o fluxo de navegador em uma base temporária (requer Edge
+e Playwright no Windows) e salva capturas de desktop/celular em `qa/`.
+
 Painel privado para executar e comparar medições de internet a partir do servidor.
 
 ## Executar com Docker

@@ -44,6 +44,8 @@ db('''CREATE TABLE IF NOT EXISTS results (id INTEGER PRIMARY KEY, provider_id IN
     jitter REAL, loss REAL, isp TEXT, ip TEXT, server TEXT, error TEXT, flags TEXT, raw TEXT,
     config TEXT, scheduled TEXT UNIQUE)''')
 db('CREATE INDEX IF NOT EXISTS results_created ON results(created)')
+if 'started' not in {c['name'] for c in db('PRAGMA table_info(results)')}:
+    db('ALTER TABLE results ADD COLUMN started REAL')
 if not db('SELECT id FROM settings WHERE id=1', one=True):
     db('INSERT INTO settings VALUES (1,?)', (json.dumps(dict(timezone='America/Sao_Paulo', retention_days=365,
         password=generate_password_hash(os.environ['ADMIN_PASSWORD']))),))
@@ -79,7 +81,10 @@ def guard(fn):
 def invalid(e): return jsonify(error=str(e)), 400
 
 @app.get('/health')
-def health(): return jsonify(status='ok', worker=worker.is_alive())
+def health():
+    live=worker.is_alive() and uptime_service['worker'].is_alive()
+    return jsonify(status='ok' if live else 'degraded', worker=worker.is_alive(),
+                   uptime_worker=uptime_service['worker'].is_alive()), 200 if live else 503
 
 @app.get('/')
 def index(): return send_from_directory('static','index.html')
@@ -194,6 +199,9 @@ def filter_results():
     where=['created>=?']; args=[datetime.fromisoformat(start.replace('Z','+00:00')).timestamp() if start else time.time()-7*86400]
     if end: where.append('created<=?'); args.append(datetime.fromisoformat(end.replace('Z','+00:00')).timestamp())
     if end and args[0]>args[1]: raise ValueError('A data inicial deve ser anterior ou igual a data final.')
+    hide_failed=request.args.get('hide_failed','0')
+    if hide_failed not in ('0','1'): raise ValueError('Filtro de falhas inválido.')
+    if hide_failed=='1': where.append("status!='error'")
     if pid: where.append('provider_id=?'); args.append(int(pid))
     return ' AND '.join(where),args
 
@@ -221,16 +229,23 @@ def export():
 def report(kind):
     if kind not in ('pdf','xlsx'): raise ValueError('Formato de relatorio invalido.')
     from reports import make_pdf, make_xlsx
+    sections=list(dict.fromkeys(request.args.get('sections','speed').split(',')))
+    if not sections or any(s not in ('speed','uptime','analysis') for s in sections):
+        raise ValueError('Selecione velocidade, uptime e/ou análises.')
     where,args=filter_results()
-    rows=db('SELECT * FROM results WHERE '+where+' ORDER BY created,id',args)
+    rows=db('SELECT id,provider_id,provider_name,created,started,status,download,upload,ping,jitter,loss,isp,ip,server,error,flags FROM results WHERE '+where+' ORDER BY created,id',args)
     tz=ZoneInfo(settings()['timezone']); now=datetime.now(tz)
     start=datetime.fromtimestamp(args[0],tz)
-    end=datetime.fromtimestamp(args[1],tz) if request.args.get('to') else now
+    end=min(datetime.fromtimestamp(args[1],tz),now) if request.args.get('to') else now
+    if start>end: raise ValueError('O período do relatório deve começar antes do momento atual.')
     pid=request.args.get('provider')
     selected=next((p['name'] for p in providers() if str(p['id'])==pid),None)
     if pid and not selected:
         selected=rows[0]['provider_name'] if rows else 'Servico '+pid
-    context=dict(timezone=str(tz),start=start,end=end,generated=now,service=selected or 'Todos os servicos')
+    context=dict(timezone=str(tz),start=start,end=end,generated=now,service=selected or 'Todos os servicos',
+                 sections=sections,hide_failed=request.args.get('hide_failed')=='1')
+    if 'uptime' in sections: context['uptime']=uptime_service['build'](start.timestamp(),end.timestamp())
+    if 'analysis' in sections: context['analysis']=analysis_service['build'](rows,start.timestamp(),end.timestamp())
     data=(make_pdf if kind=='pdf' else make_xlsx)(rows,context)
     filename='speedpanel_'+start.strftime('%Y-%m-%d')+'_'+end.strftime('%Y-%m-%d')+'.'+kind
     mimetype='application/pdf' if kind=='pdf' else 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -363,7 +378,7 @@ def work():
                 row=db("SELECT * FROM results WHERE status='queued' ORDER BY id LIMIT 1",one=True)
                 if row:
                     busy.set()
-                    db("UPDATE results SET status='running' WHERE id=?",(row['id'],))
+                    db("UPDATE results SET status='running',started=? WHERE id=?",(time.time(),row['id']))
                     threading.Thread(target=execute_job,args=(row,),daemon=True).start()
             time.sleep(2)
         except Exception:
@@ -371,3 +386,8 @@ def work():
 
 worker=threading.Thread(target=work,daemon=True)
 if os.environ.get('DISABLE_WORKER')!='1': worker.start()
+
+from uptime import install as install_uptime
+from analytics import install as install_analytics
+uptime_service=install_uptime(app,db,guard,settings)
+analysis_service=install_analytics(app,db,guard,settings,filter_results,uptime_service)
