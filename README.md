@@ -157,3 +157,23 @@ Os arquivos vetoriais compartilham a paleta escura, verde menta e azul da interf
 
 Para rodar os testes de relatórios, instale também as dependências de desenvolvimento: `pip install -r requirements-dev.txt`.
 
+
+## Gráficos interativos
+
+Os gráficos de velocidade e uptime oferecem detalhes ao passar o mouse ou tocar,
+fixação de valores por clique, legenda para mostrar/ocultar séries e visualização
+ampliada. Use os botões +/−, arraste um intervalo horizontal ou escolha um recorte
+rápido relativo à última amostra. As setas deslocam o período; Restaurar volta ao
+intervalo completo. O zoom dos gráficos de velocidade é sincronizado entre as métricas
+e é preservado durante a atualização automática.
+
+Por teclado, ←/→ percorrem amostras, Home/End escolhem os extremos, +/− ajustam o zoom,
+0 restaura o período e Esc libera os detalhes fixados. O resumo textual e o histórico
+continuam disponíveis. O zoom altera somente a visualização, sem mudar os filtros,
+os dados armazenados ou o período dos relatórios. Séries de uptime preservam lacunas;
+dados densos usam amostragem visual que mantém extremos, sem alterar os valores usados
+nos detalhes e nas estatísticas. Não há dependência de CDN para desenhar os gráficos.
+
+`python test_charts.py` verifica zoom, arraste, seleção de séries, teclado, toque,
+ampliação, preservação de picos e de lacunas com 4.000 medições em um servidor temporário
+(requer Edge e Playwright no Windows).
